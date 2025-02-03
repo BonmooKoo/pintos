@@ -285,13 +285,20 @@ main (int argc __attribute__ ((unused)), char *argv[])
 
   /* System V implementations need STREAMS configuration for the
      slave. */
+  int master_fd, slave_fd;
+  char slave_name[64];
+  if (openpty(&master_fd, &slave_fd, slave_name, NULL, NULL) == -1) {
+    perror("openpty");
+    exit(EXIT_FAILURE);
+  }
+  /*//Original
   if (isastream (slave))
     {
       if (ioctl (slave, I_PUSH, "ptem") < 0
           || ioctl (slave, I_PUSH, "ldterm") < 0)
         fail_io ("ioctl");
     }
-
+  */
   /* Arrange to get notified when a child dies, by writing a byte
      to a pipe fd.  We really want to use pselect() and
      sigprocmask(), but Solaris 2.7 doesn't have it. */
