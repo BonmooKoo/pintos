@@ -60,7 +60,14 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  
+  //BM : put arguments into user stack  
+  void **esp = &if_.esp; // esp : return address
+  //Save arg
+  if_.edi = argc;// argv[0]
+  if_.esi = (uint64_t)*esp + sizeof(void *);//argv[1]
 
+  //BM : end
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
@@ -72,6 +79,7 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
+//start switched process
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -437,7 +445,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
