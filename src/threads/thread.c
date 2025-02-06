@@ -469,6 +469,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  //BM : for exec
+  list_init(&t->children);
+  t->parent=NULL;
+  sema_init(&t->wait_sema,0);
+  t->waited=false;
   list_push_back (&all_list, &t->allelem);
 }
 

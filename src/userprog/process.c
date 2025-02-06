@@ -42,6 +42,12 @@ process_execute (const char *file_name)
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  struct thread* child = get_thread_by_tid(tid);
+  struct thread* cur = thread_current();
+  if(child!=NULL){
+  	child->parent=cur;
+	list_push_back(&cur->children,&child->child_elem);
+  }
   return tid;
 }
 
@@ -50,7 +56,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char *file_name = file_name_; //file_name_ == fn_copy
   struct intr_frame if_;
   bool success;
 
@@ -60,26 +66,75 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-  
-  //BM : put arguments into user stack  
-  void **esp = &if_.esp; // esp : return address
-  //Save arg
-  if_.edi = argc;// argv[0]
-  if_.esi = (uint64_t)*esp + sizeof(void *);//argv[1]
-
-  //BM : end
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
 
-  /* Start the user process by simulating a return from an
+  //exec ( echo hello 1234)
+  //BM : 1. parse arguments  
+  char* argv[64]; // 128B : There is an unrelated limit of 128 bytes on command-line arguments that the pintos utility can pass to the kernel
+  int argc=0;
+  
+  char* function;
+  char* remain;
+  function = strtok_r(file_name," ",&remain);
+  while(function!=NULL){
+  	argv[argc]=function;
+	function = strtok_r(NULL," ",&remain);
+        argc++;
+  }
+  //argc = 3 argv [0] = echo ,[1] = hello ,[2]= 1234 
+  //BM : 2. put arguments into interrupt stack 
+  //esp -> 0x bf ff fe 80
+  void **esp = &if_.esp; // esp : saved stack pointer
+  char* arg_addr[argc];
+  for(int i=argc-1;i.=0;i++){
+  	//esp -> return address
+        //esp - 4  -> arg 2 = 1234\0
+        //esp - 9 -> arg 1 = hello\0
+        //esp - 14 -> arg 0 = echo\0
+    *esp -= strlen(argv[i])+1;
+    strlcpy(*esp,argv[i].strlen(argv[i])+1);
+    arg_addr[i]=*esp;
+  } 
+  //align
+  while((int)(*esp)%4!=0)
+      *esp-=1;
+  //esp - 20 -> NULL
+  *esp -=sizeof(char *);//4
+  *(char**)*esp=NULL;//last argv = null
+  //argv[i] 주소 esp 에 저장
+  for(int i=argc-1;i>=0;i--){
+        //esp - 24 -> address (echo)
+        //esp - 28 -> address ( hello)
+        //esp - 32 -> address ( 1234)
+
+        *esp-=sizeof(char*);
+        *(char**)*esp=arg_addr[i];
+  }
+  //argv pointer
+  //esp - 36 -> argv index start address
+  char** argv_ptr=*esp;
+  *esp -= sizeof(char**);
+  *(char***)*esp = argv_ptr;
+  //argc
+  //esp -40 -> 3 ( argc = 3)
+  *esp -= sizeof(int);
+  *(int*)*esp = argc;
+  //return address
+  //esp - 44 = NULL ( fake return address ) 
+  *esp -= sizeof(void*);
+  *(void*)*esp=NULL;
+  
+  //BM : end
+  palloc_free_page (file_name);
+  /* If load failed, quit. */
+   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-//start switched process
+  //start switched process
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -96,7 +151,25 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+	struct thread* cur = thread_current();
+	struct list_elem* e;
+	struct thread* child =NULL;
+	
+	for(e=list_begin(&cur->children);e!=list_end(&cur->children);e=list_next(e)){
+		struct thread* t = list_entry(e,struct thread, child_elem);
+		if(t->tid == child_tid){
+			child=t;
+			break;
+		}
+	}
+	if(child==NULL||child->waited){
+		return -1;
+	}
+	child->waited=true;
+	sema_down(&child->wait_sema);
+	int status = child->exit_status;
+	list_remove(&child->child_elem);
+	return status;
 }
 
 /* Free the current process's resources. */
@@ -105,7 +178,24 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  //BM : parent -child
+  //if parent is waiting, wake up with sema_up
+  if(cur->parrent!=NULL){
+	cur->parent->exit_status=cur->exit_status;
+	sema_up(&cur->wait_sema);
+  }
 
+  //free
+  struct list_elem* e;
+  while(!list_empty(&cur->children)){
+  	e=list_pop_front(&cur->children);
+	struct thread* child= list_entry(e,struct thread, child_elem);
+	child->parent = NULL;
+  }
+  // delete this process in parent's child list
+  if (cur->parent!=NULL){
+  	list_remove(&cur->child_elem);
+  }
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

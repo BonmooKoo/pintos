@@ -80,6 +80,8 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES*(1<<9)
 struct thread
   {
     /* Owned by thread.c. */
@@ -94,6 +96,15 @@ struct thread
     struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
+    //BM
+    int exit_status;			/*exit status 가리키는 stauts 값*/
+    struct file** fd_table;		/*file descriptor table*/
+    //thread child parent
+    struct thread* parent;
+    struct list children;
+    struct list_elem child_elem;
+    struct semaphore wait_sema;
+    bool waited;
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
