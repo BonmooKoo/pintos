@@ -469,34 +469,20 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  list_push_back (&all_list, &t->allelem);
+  //BM : for exec
 #ifdef USERPROG
-  /*
-	int exit_status;
-        struct file* fd_table[FDCOUNT_LIMIT];
-        struct thread* parent;
-        struct list child;
-        struct list_elem child_elem;
-        struct semaphore child_lock;
-        struct semaphore mem_lock;
-        struct semaphore load_lock;
-        bool waited;
-        int flag;
-   */
- //process
-  sema_init(&(t->child_lock), 0);        
-  sema_init(&(t->mem_lock), 0);
-  sema_init(&(t->load_lock), 0);
-  list_init(&(t->child));
-  list_push_back(&(running_thread()->child), &(t->child_elem));
-//file
   int i;
-  for (i=0;i<FDCOUNT_LIMIT;i++){
-	t->fd_table[i]=NULL;
+  for(i=0;i<128;i++){
+  	t->fd_table[i]=t->parent->fd_table[i];
   }
-  
-#endif        
-
+  t->parent=running_thread();
+  list_init(&t->children);
+  sema_init(&t->wait_sema,0);
+  list_push_back(&(running_thread()->children),&t->child_elem); 
+  t->waited = false;
+  t->flag = 0;
+#endif
+  list_push_back (&all_list, &t->allelem);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -612,3 +598,15 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+//BM : get_thread_by_tid구현
+struct thread *get_thread_by_tid(tid_t tid) {
+    struct list_elem *e;
+    for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) {
+        struct thread *t = list_entry(e, struct thread, allelem);
+        if (t->tid == tid) {
+            return t;
+        }
+    }
+    return NULL;
+}

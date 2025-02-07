@@ -25,10 +25,81 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+void parse_filename(char *src, char *dest) {
+  int i;
+  strlcpy(dest, src, strlen(src) + 1);
+  for (i=0; dest[i]!='\0' && dest[i] != ' '; i++);
+  dest[i] = '\0';
+}
+void construct_esp(char *file_name, void **esp) {
+
+  char ** argv;
+  int argc;
+  int total_len;
+  char stored_file_name[256];
+  char *token;
+  char *last;
+  int i;
+  int len;
+  
+  strlcpy(stored_file_name, file_name, strlen(file_name) + 1);
+  token = strtok_r(stored_file_name, " ", &last);
+  argc = 0;
+  /* calculate argc */
+  while (token != NULL) {
+    argc += 1;
+    token = strtok_r(NULL, " ", &last);
+  }
+  argv = (char **)malloc(sizeof(char *) * argc);
+  /* store argv */
+  strlcpy(stored_file_name, file_name, strlen(file_name) + 1);
+  for (i = 0, token = strtok_r(stored_file_name, " ", &last); i < argc; i++, token = strtok_r(NULL, " ", &last)) {
+    len = strlen(token);
+    argv[i] = token;
+
+  }
+
+  /* push argv[argc-1] ~ argv[0] */
+  total_len = 0;
+  for (i = argc - 1; 0 <= i; i --) {
+    len = strlen(argv[i]);
+    *esp -= len + 1;
+    total_len += len + 1;
+    strlcpy(*esp, argv[i], len + 1);
+    argv[i] = *esp;
+  }
+  /* push word align */
+  *esp -= total_len % 4 != 0 ? 4 - (total_len % 4) : 0;
+  /* push NULL */
+  *esp -= 4;
+  **(uint32_t **)esp = 0;
+  /* push address of argv[argc-1] ~ argv[0] */
+  for (i = argc - 1; 0 <= i; i--) {
+    *esp -= 4;
+    **(uint32_t **)esp = argv[i];
+  }
+  /* push address of argv */
+  *esp -= 4;
+  **(uint32_t **)esp = *esp + 4;
+
+  /* push argc */
+  *esp -= 4;
+  **(uint32_t **)esp = argc;
+  
+  /* push return address */
+  *esp -= 4;
+  **(uint32_t **)esp = 0;
+
+  free(argv);
+}
+
 tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char cmd_name[256];
+  struct list_elem* e;
+  struct thread* t;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,103 +109,48 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  parse_filename(file_name, cmd_name);
+
+  if (filesys_open(cmd_name) == NULL) {
+    return -1; 
+  }
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  struct thread* child = get_thread_by_tid(tid);
-  struct thread* cur = thread_current();
-  if(child!=NULL){
-  	child->parent=cur;
-	list_push_back(&cur->children,&child->child_elem);
-  }
+  
   return tid;
 }
-
 /* A thread function that loads a user process and starts it
    running. */
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_; //file_name_ == fn_copy
+  char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  char cmd_name[256]; // 4KB
+  parse_filename(file_name, cmd_name);
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
-  if (!success) 
+  success = load (cmd_name, &if_.eip, &if_.esp);
+  if (success) {
+    construct_esp(file_name, &if_.esp);
+  }
+  /* If load failed, quit. */
+  palloc_free_page (file_name);
+  if (!success)
     thread_exit ();
 
-  //exec ( echo hello 1234)
-  //BM : 1. parse arguments  
-  char* argv[64]; // 128B : There is an unrelated limit of 128 bytes on command-line arguments that the pintos utility can pass to the kernel
-  int argc=0;
-  
-  char* function;
-  char* remain;
-  function = strtok_r(file_name," ",&remain);
-  while(function!=NULL){
-  	argv[argc]=function;
-	function = strtok_r(NULL," ",&remain);
-        argc++;
-  }
-  //argc = 3 argv [0] = echo ,[1] = hello ,[2]= 1234 
-  //BM : 2. put arguments into interrupt stack 
-  //esp -> 0x bf ff fe 80
-  void **esp = &if_.esp; // esp : saved stack pointer
-  char* arg_addr[argc];
-  for(int i=argc-1;i.=0;i++){
-  	//esp -> return address
-        //esp - 4  -> arg 2 = 1234\0
-        //esp - 9 -> arg 1 = hello\0
-        //esp - 14 -> arg 0 = echo\0
-    *esp -= strlen(argv[i])+1;
-    strlcpy(*esp,argv[i].strlen(argv[i])+1);
-    arg_addr[i]=*esp;
-  } 
-  //align
-  while((int)(*esp)%4!=0)
-      *esp-=1;
-  //esp - 20 -> NULL
-  *esp -=sizeof(char *);//4
-  *(char**)*esp=NULL;//last argv = null
-  //argv[i] 주소 esp 에 저장
-  for(int i=argc-1;i>=0;i--){
-        //esp - 24 -> address (echo)
-        //esp - 28 -> address ( hello)
-        //esp - 32 -> address ( 1234)
-
-        *esp-=sizeof(char*);
-        *(char**)*esp=arg_addr[i];
-  }
-  //argv pointer
-  //esp - 36 -> argv index start address
-  char** argv_ptr=*esp;
-  *esp -= sizeof(char**);
-  *(char***)*esp = argv_ptr;
-  //argc
-  //esp -40 -> 3 ( argc = 3)
-  *esp -= sizeof(int);
-  *(int*)*esp = argc;
-  //return address
-  //esp - 44 = NULL ( fake return address ) 
-  *esp -= sizeof(void*);
-  *(void*)*esp=NULL;
-  
-  //BM : end
-  palloc_free_page (file_name);
-  /* If load failed, quit. */
-   /* Start the user process by simulating a return from an
+  /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  //start switched process
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -149,27 +165,24 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid)
 {
-	struct thread* cur = thread_current();
-	struct list_elem* e;
-	struct thread* child =NULL;
-	
-	for(e=list_begin(&cur->children);e!=list_end(&cur->children);e=list_next(e)){
-		struct thread* t = list_entry(e,struct thread, child_elem);
-		if(t->tid == child_tid){
-			child=t;
-			break;
-		}
-	}
-	if(child==NULL||child->waited){
-		return -1;
-	}
-	child->waited=true;
-	sema_down(&child->wait_sema);
-	int status = child->exit_status;
-	list_remove(&child->child_elem);
-	return status;
+
+  struct list_elem* e;
+  struct thread* t = NULL;
+  int exit_status;
+
+  for (e = list_begin(&(thread_current()->child)); e != list_end(&(thread_current()->child)); e = list_next(e)) {
+    t = list_entry(e, struct thread, child_elem);
+    if (child_tid == t->tid) {
+      sema_down(&(t->child_lock));
+      exit_status = t->exit_status;
+      list_remove(&(t->child_elem));
+      sema_up(&(t->mem_lock)); /* new */
+      return exit_status;
+    }
+  }
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -178,28 +191,11 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  //BM : parent -child
-  //if parent is waiting, wake up with sema_up
-  if(cur->parrent!=NULL){
-	cur->parent->exit_status=cur->exit_status;
-	sema_up(&cur->wait_sema);
-  }
 
-  //free
-  struct list_elem* e;
-  while(!list_empty(&cur->children)){
-  	e=list_pop_front(&cur->children);
-	struct thread* child= list_entry(e,struct thread, child_elem);
-	child->parent = NULL;
-  }
-  // delete this process in parent's child list
-  if (cur->parent!=NULL){
-  	list_remove(&cur->child_elem);
-  }
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  if (pd != NULL) 
+  if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
@@ -212,7 +208,10 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  sema_up(&(cur->child_lock));
+  sema_down(&(cur->mem_lock)); /* new */
 }
+
 
 /* Sets up the CPU for running user code in the current
    thread.
@@ -535,7 +534,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }

@@ -21,6 +21,7 @@ struct intr_frame
   {
     /* Pushed by intr_entry in intr-stubs.S.
        These are the interrupted task's saved registers. */
+//BM: 범용 레지스터 edi ~ eax
     uint32_t edi;               /* Saved EDI. */
     uint32_t esi;               /* Saved ESI. */
     uint32_t ebp;               /* Saved EBP. */
@@ -51,6 +52,7 @@ struct intr_frame
     void (*eip) (void);         /* Next instruction to execute. */
     uint16_t cs, :16;           /* Code segment for eip. */
     uint32_t eflags;            /* Saved CPU flags. */
+    
     void *esp;                  /* Saved stack pointer. */
     uint16_t ss, :16;           /* Data segment for esp. */
   };
