@@ -124,8 +124,7 @@ int filesize(int fd){
 int read(int fd, void* buffer, unsigned size){
 	struct thread* cur = thread_current();
 	if(fd<0||fd==1||fd>=FDCOUNT_LIMIT)
-		return -1;
-	struct file* open_file = cur->fd_table[fd];
+		exit(-1);
 	lock_acquire(&filesys_lock);
 	if(fd==0){ //stdio
 		unsigned i;
@@ -137,8 +136,10 @@ int read(int fd, void* buffer, unsigned size){
 		return i;	
 	}
 	else if (fd>2){
+		struct file* open_file = cur->fd_table[fd];
 		if(open_file==NULL){
-			return -1;//nofile exist
+			lock_release(&filesys_lock);
+			exit(-1);//nofile exist
 		}
 		else{
 			int read_size = file_read(open_file,buffer,size);
@@ -155,6 +156,9 @@ int write(int fd,const void* buffer, unsigned size){
 	struct thread* cur = thread_current();
 	struct file* open_file;
 	int write_size;
+        if(fd<=0 || fd>=FDTABLE_SIZE){
+		exit(-1);
+	}
 	lock_acquire(&filesys_lock);
 	if (fd == 1) { // 표준 출력 (콘솔)
 		putbuf(buffer, size);
