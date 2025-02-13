@@ -91,9 +91,10 @@ int open(const char* file){
 	}
 	lock_acquire(&filesys_lock);
 	struct file* open_file = filesys_open(file);
-	if(open_file==NULL)
+	if(open_file==NULL){
 		lock_release(&filesys_lock);
-	return -1; // no file exist
+		return -1; // no file exist
+	}
 	//fd table
 	struct thread* cur = thread_current();
 	struct file** fdt = cur->fd_table;
@@ -101,7 +102,7 @@ int open(const char* file){
 	//lock_acquire(&filesys_lock);
 	for(fd=3;fd<FDCOUNT_LIMIT;fd++){
 		if(fdt[fd]==NULL){
-			file_deny_write(open_file);
+			//file_deny_write(open_file);
 			fdt[fd]=open_file;
 			lock_release(&filesys_lock);
 			return fd;
@@ -122,10 +123,9 @@ int filesize(int fd){
 }
 int read(int fd, void* buffer, unsigned size){
 	struct thread* cur = thread_current();
-	if(fd<0||fd>=FDCOUNT_LIMIT)
+	if(fd<0||fd==1||fd>=FDCOUNT_LIMIT)
 		return -1;
 	struct file* open_file = cur->fd_table[fd];
-
 	lock_acquire(&filesys_lock);
 	if(fd==0){ //stdio
 		unsigned i;
