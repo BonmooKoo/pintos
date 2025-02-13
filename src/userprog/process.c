@@ -41,14 +41,13 @@ void construct_esp(char *file_name, void **esp) {
   char *last;
   int i;
   int len;
-  
   strlcpy(stored_file_name, file_name, strlen(file_name) + 1);
   token = strtok_r(stored_file_name, " ", &last);
   argc = 0;
   /* calculate argc */
   while (token != NULL) {
-    argc += 1;
     token = strtok_r(NULL, " ", &last);
+    argc++;
   }
   argv = (char **)malloc(sizeof(char *) * argc);
   /* store argv */
@@ -56,25 +55,24 @@ void construct_esp(char *file_name, void **esp) {
   for (i = 0, token = strtok_r(stored_file_name, " ", &last); i < argc; i++, token = strtok_r(NULL, " ", &last)) {
     len = strlen(token);
     argv[i] = token;
-
   }
 
   /* push argv[argc-1] ~ argv[0] */
-  total_len = 0;
-  for (i = argc - 1; 0 <= i; i --) {
+  for (i = argc - 1; i>=0; i --) {
     len = strlen(argv[i]);
     *esp -= len + 1;
-    total_len += len + 1;
     strlcpy(*esp, argv[i], len + 1);
     argv[i] = *esp;
   }
   /* push word align */
-  *esp -= total_len % 4 != 0 ? 4 - (total_len % 4) : 0;
+  while ((int)esp % 4 != 0) {
+    esp--;  // 4의 배수가 될 때까지 패딩
+  }  
   /* push NULL */
   *esp -= 4;
   **(uint32_t **)esp = 0;
   /* push address of argv[argc-1] ~ argv[0] */
-  for (i = argc - 1; 0 <= i; i--) {
+  for (i = argc - 1; i>=0; i--) {
     *esp -= 4;
     **(uint32_t **)esp = argv[i];
   }
@@ -89,7 +87,8 @@ void construct_esp(char *file_name, void **esp) {
   /* push return address */
   *esp -= 4;
   **(uint32_t **)esp = 0;
-
+  //hex_dump(0xbfffffa0, (void*)0xbfffffa0, 128, true);
+  printf("construct_esp() end: %x\n",*esp);
   free(argv);
 }
 
@@ -110,15 +109,25 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   parse_filename(file_name, cmd_name);
-
+  printf("process_execute(): %s\n",cmd_name);
   if (filesys_open(cmd_name) == NULL) {
     return -1; 
   }
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
+  //sema_down(&current->load_lock);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  
+  /*
+  struct list_elem* iter = NULL;
+  struct thread *elem = NULL;
+  for (iter = list_begin(&(current->children)); iter != list_end(&(current->children)); iter = list_next(iter))
+  {
+    elem = list_entry (iter, struct thread, child_elem);
+    if (elem->exit_code == -1)
+      return process_wait (tid);
+  }
+  */
   return tid;
 }
 /* A thread function that loads a user process and starts it
@@ -131,6 +140,7 @@ start_process (void *file_name_)
   bool success;
   char cmd_name[256]; // 4KB
   parse_filename(file_name, cmd_name);
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -139,12 +149,14 @@ start_process (void *file_name_)
   success = load (cmd_name, &if_.eip, &if_.esp);
   if (success) {
     construct_esp(file_name, &if_.esp);
+    hex_dump(if_.esp,if_.esp,PHYS_BASE-if_.esp,true);
   }
   /* If load failed, quit. */
   palloc_free_page (file_name);
+  //sema_up(&thread_current()->parent->load_lock);
   if (!success)
     thread_exit ();
-
+  printf("start_process() end\n"); 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -317,7 +329,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
+  printf("load() : %s\n",file_name);
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -526,6 +538,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
+  //printf("setup_stack() : %x\n",esp);
   uint8_t *kpage;
   bool success = false;
 

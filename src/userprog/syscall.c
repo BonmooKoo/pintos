@@ -11,11 +11,11 @@
 #include "threads/malloc.h"
 static void syscall_handler (struct intr_frame *);
 struct file
-  {
-    struct inode *inode;        /* File's inode. */
-    off_t pos;                  /* Current position. */
-    bool deny_write;            /* Has file_deny_write() been called? */
-  };
+{
+	struct inode *inode;        /* File's inode. */
+	off_t pos;                  /* Current position. */
+	bool deny_write;            /* Has file_deny_write() been called? */
+};
 	void
 syscall_init (void) 
 {
@@ -92,7 +92,7 @@ int open(const char* file){
 	struct file* open_file = filesys_open(file);
 	if(open_file==NULL)
 		lock_release(&filesys_lock);
-		return -1; // no file exist
+	return -1; // no file exist
 	//fd table
 	struct thread* cur = thread_current();
 	struct file** fdt = cur->fd_table;
