@@ -40,7 +40,7 @@ void exit(int status){
 	cur->exit_status = status;
 	int i;
 	if (cur->fd_table != NULL) {
-		for (i = 2; i < 128; i++) { //0,1은 stdin / out
+		for (i = 3; i < 128; i++) { //0,1은 stdin / out
 			if (cur->fd_table[i] != NULL) {
 				file_close(cur->fd_table[i]);
 				cur->fd_table[i] = NULL;
@@ -67,6 +67,7 @@ int wait(pid_t pid){
 	return ret;
 }
 bool create(const char* file , unsigned initial_size){
+	//printf("file pointer: %s\n", (void*)file);
 	if(file==NULL){
 		exit(-1);
 	}
@@ -150,8 +151,9 @@ int read(int fd, void* buffer, unsigned size){
 }
 
 int write(int fd,const void* buffer, unsigned size){
+	//printf("write : fd : %d buffer :%s size: %d\n",fd,buffer,size);
 	struct thread* cur = thread_current();
-	struct file* open_file = cur->fd_table[fd];
+	struct file* open_file;
 	int write_size;
 	lock_acquire(&filesys_lock);
 	if (fd == 1) { // 표준 출력 (콘솔)
@@ -159,6 +161,7 @@ int write(int fd,const void* buffer, unsigned size){
 		write_size = size;
 	}
 	else if (fd>2){
+		open_file=cur->fd_table[fd];
 		if(open_file==NULL){
 			lock_release(&filesys_lock);
 			exit(-1);	
@@ -223,80 +226,83 @@ syscall_handler (struct intr_frame *f)
 			halt();
 			break;
 		case SYS_EXIT :
-			status = *(int *)(f->esp + 4);
 			check_address(f->esp + 4);
-			exit(status);
+			exit((const char *)*(uint32_t *)(f->esp + 4));
 			break;
 		case SYS_EXEC :
-			cmd_line = *(char **)(f->esp + 4);
+			//cmd_line = *(char **)(f->esp + 4);
 			check_address(f->esp + 4);
-			f->eax = exec(cmd_line); // return add
+			f->eax = exec((const char *)*(uint32_t *)(f->esp + 4)); // return add
 			break;
 		case SYS_WAIT : 
-			pid = *(pid_t *)(f->esp + 4);
+			//pid = *(pid_t *)(f->esp + 4);
 			check_address(f->esp + 4);
-			f->eax = wait(pid);
+			f->eax = wait((const char *)*(uint32_t *)(f->esp + 4));
 			break;
 		case SYS_CREATE :
-			file = *(char**)(f->esp + 4 );
-			size = *(unsigned*)(f->esp + 8);
+			//file = *(char**)(f->esp + 4 );
+			//size = *(unsigned*)(f->esp + 8 );
+			//printf("f->esp + 4 address: %p\n", (void *)(f->esp + 4));
+			//printf("Value at f->esp + 4: %p\n", *(void **)(f->esp + 4));
 			check_address(f->esp + 4);
 			check_address(f->esp + 8);
-			f->eax = create(file,size);
+			//f->eax = create(file,size);
+			f->eax = create ( (const char *)*(uint32_t *)(f->esp + 4),  (const char *)*(uint32_t *)(f->esp + 8) );
 			break;
 		case SYS_REMOVE :
-			file = *(char**)(f->esp + 4 );
+			//file = *(char**)(f->esp + 4 );
 			check_address(f->esp + 4);
-			f->eax = remove(file); 
+			f->eax = remove((const char *)*(uint32_t *)(f->esp + 4)); 
 			break;
 		case SYS_OPEN :
-			file = *(char**)(f->esp + 4 );
+			//file = *(char**)(f->esp + 4 );
 			check_address(f->esp + 4);
-			f->eax = open(file);
+			f->eax = open((const char *)*(uint32_t *)(f->esp + 4));
 			break;
 		case SYS_FILESIZE :
-			fd = *(int*)(f->esp + 4 );
+			//fd = *(int*)(f->esp + 4 );
 			check_address(f->esp + 4);
-			f->eax = filesize(fd);	
+			f->eax = filesize((const char *)*(uint32_t *)(f->esp + 4));	
 			break;
 		case SYS_READ :
-			fd = *(int *)(f->esp + 4);
-			buffer = *(void **)(f->esp + 8);
-			size = *(unsigned *)(f->esp + 12);
+			//fd = *(int *)(f->esp + 4);
+			//buffer = *(void **)(f->esp + 8);
+			//size = *(unsigned *)(f->esp + 12);
 			check_address(f->esp + 4);
 			check_address(f->esp + 8);
 			check_address(f->esp + 12);
-			f->eax = read(fd, buffer, size);
+			f->eax = read((const char *)*(uint32_t *)(f->esp + 4), (const char *)*(uint32_t *)(f->esp + 8), (const char *)*(uint32_t *)(f->esp + 12));
 			break;
 		case SYS_WRITE :
-			fd = *(int *)(f->esp + 4);
-			buffer = *(void **)(f->esp + 8);
-			size = *(unsigned *)(f->esp + 12);
+			//fd = *(int *)(f->esp + 4);
+			//buffer = *(void **)(f->esp + 8);
+			//size = *(unsigned *)(f->esp + 12);
 			check_address(f->esp + 4);
 			check_address(f->esp + 8);
 			check_address(f->esp + 12);
-			f->eax = write(fd, buffer, size);
+			f->eax = write((const char *)*(uint32_t *)(f->esp + 4), (const char *)*(uint32_t *)(f->esp + 8), (const char *)*(uint32_t *)(f->esp + 12));
 			break;
 		case SYS_SEEK :
-			fd = *(int *)(f->esp + 4);
-			position = *(unsigned *)(f->esp + 8);
+			//fd = *(int *)(f->esp + 4);
+			//position = *(unsigned *)(f->esp + 8);
 			check_address(f->esp + 4);
 			check_address(f->esp + 8);
-			seek(fd, position);
+			seek((const char *)*(uint32_t *)(f->esp + 4), (const char *)*(uint32_t *)(f->esp + 8));
 			break;
 		case SYS_TELL :
-			fd = *(int *)(f->esp + 4);
+			//fd = *(int *)(f->esp + 4);
 			check_address(f->esp + 4);
-			f->eax = tell(fd);
+			f->eax = tell((const char *)*(uint32_t *)(f->esp + 4));
 			break;
 		case SYS_CLOSE :
-			fd = *(int *)(f->esp + 4);
+			//fd = *(int *)(f->esp + 4);
 			check_address(f->esp + 4);
-			close(fd);
+			close((const char *)*(uint32_t *)(f->esp + 4));
 			break;
 		case SYS_MMAP :
 			break;
 		case SYS_MUNMAP :
 			break;
 	}
+	//printf("=============syscall end===========\n");
 }

@@ -88,7 +88,7 @@ void construct_esp(char *file_name, void **esp) {
   *esp -= 4;
   **(uint32_t **)esp = 0;
   //hex_dump(0xbfffffa0, (void*)0xbfffffa0, 128, true);
-  printf("construct_esp() end: %x\n",*esp);
+  //printf("construct_esp() end: %x\n",*esp);
   free(argv);
 }
 
@@ -109,7 +109,7 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   parse_filename(file_name, cmd_name);
-  printf("process_execute(): %s\n",cmd_name);
+  //printf("process_execute(): %s\n",cmd_name);
   if (filesys_open(cmd_name) == NULL) {
     return -1; 
   }
@@ -149,14 +149,14 @@ start_process (void *file_name_)
   success = load (cmd_name, &if_.eip, &if_.esp);
   if (success) {
     construct_esp(file_name, &if_.esp);
-    hex_dump(if_.esp,if_.esp,PHYS_BASE-if_.esp,true);
+    //hex_dump(if_.esp,if_.esp,PHYS_BASE-if_.esp,true);
   }
   /* If load failed, quit. */
   palloc_free_page (file_name);
   //sema_up(&thread_current()->parent->load_lock);
   if (!success)
     thread_exit ();
-  printf("start_process() end\n"); 
+  //printf("start_process() end\n"); 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -329,7 +329,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-  printf("load() : %s\n",file_name);
+  //printf("load() : %s\n",file_name);
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 

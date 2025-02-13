@@ -90,6 +90,7 @@ wait (pid_t pid)
 bool
 create (const char *file, unsigned initial_size)
 {
+//printf("syscall2 file pointer: (%p) %s\n syscall2 size: %u\n", file,file,initial_size);
   return syscall2 (SYS_CREATE, file, initial_size);
 }
 
