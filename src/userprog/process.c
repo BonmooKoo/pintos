@@ -204,6 +204,7 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   int i;
+  file_close(cur->exec_file);
   for(i=3;i<FDCOUNT_LIMIT;i++){
 	if(cur->fd_table[i]!=NULL){
 		file_close(cur->fd_table[i]);
@@ -343,7 +344,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+  t->exec_file = file;
+  file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -427,7 +429,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  //file_close (file);
   return success;
 }
 

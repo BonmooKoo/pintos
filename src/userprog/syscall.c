@@ -123,6 +123,7 @@ int filesize(int fd){
 }
 int read(int fd, void* buffer, unsigned size){
 	struct thread* cur = thread_current();
+	check_address(buffer);
 	if(fd<0||fd==1||fd>=FDCOUNT_LIMIT)
 		exit(-1);
 	lock_acquire(&filesys_lock);
@@ -133,6 +134,7 @@ int read(int fd, void* buffer, unsigned size){
 			if(((char*)buffer)[i]=='\0')
 				break;
 		}
+		lock_release(&filesys_lock);
 		return i;	
 	}
 	else if (fd>2){
@@ -156,7 +158,8 @@ int write(int fd,const void* buffer, unsigned size){
 	struct thread* cur = thread_current();
 	struct file* open_file;
 	int write_size;
-        if(fd<=0 || fd>=FDTABLE_SIZE){
+	check_address(buffer);
+        if(fd<=0 || fd>=FDCOUNT_LIMIT){
 		exit(-1);
 	}
 	lock_acquire(&filesys_lock);

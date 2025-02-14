@@ -106,6 +106,7 @@ struct thread
 	bool waited;
 	bool load_flag;//프로세스 프로그램 메모리 적재 여부
 	bool exit_flag;//프로세스 종료 유무
+	struct file* exec_file;
 	/* Owned by userprog/process.c. */
 	uint32_t *pagedir;                  /* Page directory. */
 #endif
