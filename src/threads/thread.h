@@ -101,7 +101,7 @@ struct thread
 	struct list child;
 	struct list_elem child_elem;
 	struct semaphore child_lock;//자식 프로세스 종료 대기(exit_sema)
-	struct semaphore mem_lock;//
+	struct semaphore mem_lock;//삭제될때 부모의 자식리스트에서 삭제하기 위해 메모리에 남겨둠(remove_sema)
 	struct semaphore load_lock;//자식 프로세스 생성 대기(load_sema)
 	bool waited;
 	bool load_flag;//프로세스 프로그램 메모리 적재 여부

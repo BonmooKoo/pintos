@@ -299,6 +299,8 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
+  sema_up(&thread_current()->child_lock);
+  sema_down(&thread_current()->mem_lock);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -484,6 +486,8 @@ init_thread (struct thread *t, const char *name, int priority)
         int flag;
    */
 //process
+  t->load_flag=true;
+  t->exit_flag=false; 
   sema_init(&(t->child_lock), 0);        
   sema_init(&(t->mem_lock), 0);
   sema_init(&(t->load_lock), 0);

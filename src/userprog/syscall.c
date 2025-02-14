@@ -53,14 +53,35 @@ void exit(int status){
 
 pid_t exec(const char* cmd_line){
 	pid_t pid;
+	struct thread* child=NULL;
+	struct thread* t=NULL;
+	struct list_elem* e;
 	int cmd_size = strlen(cmd_line)+1;
 	if(cmd_size>PGSIZE){
 		return -1; // limit 4KB
 	}
 	//lock_acquire (&filesys_lock);
 	pid=process_execute(cmd_line);
+ 	for (e = list_begin(&(thread_current()->child)); e != list_end(&(thread_current()->child)); e = list_next(e)) {	
+		t = list_entry(e, struct thread, child_elem);
+		if (pid == t->tid) {
+			child = t;
+			break;	
+		}
+	}
+	if(child!=NULL){
+		sema_down(&(child->load_lock));
+		if(child->load_flag==false){
+			return -1;
+		}
+		else{
+			return pid;
+		}
+	}
+	else{
+		return -1;	
+	}
 	//lock_release(&filesys_lock);
-	return pid;	
 }
 int wait(pid_t pid){
 	int ret = process_wait(pid);

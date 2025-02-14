@@ -97,7 +97,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   char cmd_name[256];
-  struct list_elem* e;
+  struct list_elem* elem;
   struct thread* t;
   tid_t tid;
 
@@ -115,19 +115,17 @@ process_execute (const char *file_name)
   }
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
-  //sema_down(&current->load_lock);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  /*
-  struct list_elem* iter = NULL;
-  struct thread *elem = NULL;
-  for (iter = list_begin(&(current->children)); iter != list_end(&(current->children)); iter = list_next(iter))
-  {
-    elem = list_entry (iter, struct thread, child_elem);
-    if (elem->exit_code == -1)
-      return process_wait (tid);
+  //sema_down(&thread_current->load_lock);
+  //*
+  for(elem=list_begin(&thread_current()->child);elem!=list_end(&thread_current()->child);elem=list_next(elem)){
+    t = list_entry(elem, struct thread, child_elem);
+    if(t->load_flag==false){
+      return process_wait(tid);
+    }
   }
-  */
+  //*/
   return tid;
 }
 /* A thread function that loads a user process and starts it
@@ -147,16 +145,21 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (cmd_name, &if_.eip, &if_.esp);
+  sema_up(&(thread_current()->load_lock));
   if (success) {
     construct_esp(file_name, &if_.esp);
     //hex_dump(if_.esp,if_.esp,PHYS_BASE-if_.esp,true);
   }
+  
   /* If load failed, quit. */
   palloc_free_page (file_name);
   //sema_up(&thread_current()->parent->load_lock);
-  if (!success)
-    thread_exit ();
-  //printf("start_process() end\n"); 
+  if (!success){
+    	thread_current()->load_flag=false;
+	exit(-1);
+  }
+  thread_current()->load_flag=true;
+//printf("start_process() end\n"); 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -201,16 +204,11 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-  struct thread *cur = thread_current ();
+  struct thread* cur = thread_current ();
   uint32_t *pd;
   int i;
-  file_close(cur->exec_file);
-  for(i=3;i<FDCOUNT_LIMIT;i++){
-	if(cur->fd_table[i]!=NULL){
-		file_close(cur->fd_table[i]);
-		cur->fd_table[i]=NULL;
-	}
-  }
+  struct list_elem* elem;
+  struct thread* t;
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -227,8 +225,20 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  sema_up(&(cur->child_lock));
-  sema_down(&(cur->mem_lock)); /* new */
+  for(elem=list_begin(&(thread_current()->child)); elem!=list_end(&(thread_current()->child)); elem=list_next(elem)){
+    t=list_entry(elem, struct thread, child_elem);
+    process_wait(t->tid);
+  }
+  file_close(cur->exec_file);
+  for(i=3;i<FDCOUNT_LIMIT;i++){
+	if(cur->fd_table[i]!=NULL){
+		file_close(cur->fd_table[i]);
+		cur->fd_table[i]=NULL;
+	}
+  }
+  //@ thread_exit
+  //sema_up(&(cur->child_lock));
+  //sema_down(&(cur->mem_lock)); 
 }
 
 
