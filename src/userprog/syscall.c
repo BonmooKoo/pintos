@@ -39,14 +39,6 @@ void exit(int status){
 	struct thread *cur = thread_current();
 	cur->exit_status = status;
 	int i;
-	if (cur->fd_table != NULL) {
-		for (i = 3; i < 128; i++) { //0,1은 stdin / out
-			if (cur->fd_table[i] != NULL) {
-				file_close(cur->fd_table[i]);
-				cur->fd_table[i] = NULL;
-			}
-		}
-	}
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
 }

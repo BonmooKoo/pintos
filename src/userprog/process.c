@@ -211,6 +211,12 @@ process_exit (void)
   struct thread* t;
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  for(i=3;i<FDCOUNT_LIMIT;i++){
+	if(cur->fd_table[i]!=NULL){
+		file_close(cur->fd_table[i]);
+		cur->fd_table[i]=NULL;
+	}
+  }
   pd = cur->pagedir;
   if (pd != NULL)
     {
@@ -230,12 +236,6 @@ process_exit (void)
     process_wait(t->tid);
   }
   file_close(cur->exec_file);
-  for(i=3;i<FDCOUNT_LIMIT;i++){
-	if(cur->fd_table[i]!=NULL){
-		file_close(cur->fd_table[i]);
-		cur->fd_table[i]=NULL;
-	}
-  }
   //@ thread_exit
   //sema_up(&(cur->child_lock));
   //sema_down(&(cur->mem_lock)); 
