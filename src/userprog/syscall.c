@@ -30,7 +30,6 @@ void check_address(const uint64_t *addr){
 		exit(-1);
 	}
 }
-
 void halt(void){
 	shutdown_power_off();	
 }
