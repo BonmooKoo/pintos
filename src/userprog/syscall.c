@@ -221,9 +221,9 @@ void close (int fd){
 	if(fd<0||fd>=FDCOUNT_LIMIT||cur->fd_table[fd]==NULL)
 		return -1;//there is no file to close
 	struct file* open_file = cur->fd_table[fd];
+	file_close(open_file);
 	cur->fd_table[fd]=NULL;	
 	//lock_acquire(&filesys_lock);
-	file_close(open_file);
 	//lock_release(&filesys_lock);
 }
 //BM : Signal function end

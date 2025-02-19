@@ -91,10 +91,12 @@ void construct_esp(char *file_name, void **esp) {
   //printf("construct_esp() end: %x\n",*esp);
   free(argv);
 }
-
+//int palloc=0;
+//int pfree=0;
 tid_t
 process_execute (const char *file_name) 
 {
+  init_count();
   char *fn_copy;
   char cmd_name[256];
   struct list_elem* elem;
@@ -104,28 +106,32 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  //palloc++;
+  if (fn_copy == NULL){
+    palloc_free_page(fn_copy);
+    //pfree++;
     return TID_ERROR;
+  }
   strlcpy (fn_copy, file_name, PGSIZE);
 
   parse_filename(file_name, cmd_name);
-  //printf("process_execute(): %s\n",cmd_name);
-  if (filesys_open(cmd_name) == NULL) {
+  /*
+  if(filesys_open(cmd_name) == NULL){  
     return -1; 
   }
-  /* Create a new thread to execute FILE_NAME. */
+  */
   tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  
+  if (tid == TID_ERROR){
     palloc_free_page (fn_copy); 
-  //sema_down(&thread_current->load_lock);
-  //*
+    //pfree++;
+  }
   for(elem=list_begin(&thread_current()->child);elem!=list_end(&thread_current()->child);elem=list_next(elem)){
     t = list_entry(elem, struct thread, child_elem);
     if(t->load_flag==false){
       return process_wait(tid);
     }
   }
-  //*/
   return tid;
 }
 /* A thread function that loads a user process and starts it
@@ -144,15 +150,17 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  //printf("start_process : %s\n",cmd_name);
   success = load (cmd_name, &if_.eip, &if_.esp);
   sema_up(&(thread_current()->load_lock));
   if (success) {
     construct_esp(file_name, &if_.esp);
-    //hex_dump(if_.esp,if_.esp,PHYS_BASE-if_.esp,true);
+    //hex_dump/(if_.esp,if_.esp,PHYS_BASE-if_.esp,true);
   }
   
   /* If load failed, quit. */
   palloc_free_page (file_name);
+   // pfree++;
   //sema_up(&thread_current()->parent->load_lock);
   if (!success){
     	thread_current()->load_flag=false;
@@ -160,12 +168,6 @@ start_process (void *file_name_)
   }
   thread_current()->load_flag=true;
 //printf("start_process() end\n"); 
-  /* Start the user process by simulating a return from an
-     interrupt, implemented by intr_exit (in
-     threads/intr-stubs.S).  Because intr_exit takes all of its
-     arguments on the stack in the form of a `struct intr_frame',
-     we just point the stack pointer (%esp) to our stack frame
-     and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -209,6 +211,7 @@ process_exit (void)
   int i;
   struct list_elem* elem;
   struct thread* t;
+  //printf("palloc : %d, pfree : %d\n",get_palloc_count(),get_pfree_count());
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   for(i=3;i<FDCOUNT_LIMIT;i++){
@@ -235,7 +238,9 @@ process_exit (void)
     t=list_entry(elem, struct thread, child_elem);
     process_wait(t->tid);
   }
-  file_close(cur->exec_file);
+  if(cur->exec_file!=NULL){
+  	file_close(cur->exec_file);
+  }
   //@ thread_exit
   //sema_up(&(cur->child_lock));
   //sema_down(&(cur->mem_lock)); 
@@ -257,7 +262,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -354,8 +359,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-  t->exec_file = file;
-  file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -434,15 +437,18 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
-
+  file_deny_write(file);
+  t->exec_file = file;
   success = true;
 
  done:
   /* We arrive here whether the load is successful or not. */
-  //file_close (file);
+  if(!success){
+     file_close (file);
+  }
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -496,6 +502,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
    memory are initialized, as follows:
 
+
         - READ_BYTES bytes at UPAGE must be read from FILE
           starting at offset OFS.
 
@@ -525,6 +532,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
+      //palloc++;
       if (kpage == NULL)
         return false;
 
@@ -532,6 +540,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
+        //  pfree++;
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -540,6 +549,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
+          //pfree++;
           return false; 
         }
 
@@ -561,13 +571,15 @@ setup_stack (void **esp)
   bool success = false;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  //palloc++;
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
-      else
+      else{
         palloc_free_page (kpage);
+      }
     }
   return success;
 }

@@ -10,7 +10,9 @@ enum palloc_flags
     PAL_ZERO = 002,             /* Zero page contents. */
     PAL_USER = 004              /* User page. */
   };
-
+void init_count();
+int get_palloc_count();
+int get_pfree_count();
 void palloc_init (size_t user_page_limit);
 void *palloc_get_page (enum palloc_flags);
 void *palloc_get_multiple (enum palloc_flags, size_t page_cnt);
