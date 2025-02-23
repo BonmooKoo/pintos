@@ -51,7 +51,6 @@ pid_t exec(const char* cmd_line){
 		return -1; // limit 4KB
 	}
 	pid=process_execute(cmd_line);
-	//1. find child thread
 	for (e = list_begin(&(thread_current()->child)); 
 			e != list_end(&(thread_current()->child)); 
 			e = list_next(e)) {	
@@ -61,61 +60,31 @@ pid_t exec(const char* cmd_line){
 			break;	
 		}
 	}
-	//2.
 	if(child!=NULL){
+		sema_down(&(child->load_lock));
 		if(child->load_flag==false){
-			sema_down(&(child->load_lock));
 			return -1;
 		}
 		else{
-		/*	
-			//1. copy parent FDT
-			int i;
-			int pipe_read_fd = -1;
-			int pipe_write_fd = -1;
-			for (i = 0; i < FDCOUNT_LIMIT; i++) {
-				struct file *parent_f = thread_current()->fd_table[i];
-				if (parent_f != NULL) {
-					struct file* new_f = (struct file*)malloc(sizeof(struct file));
-					*new_f = *parent_f;
-					child->fd_table[i] = new_f;
+/*
+			//1. copy parent pid
+			if (child->pipe_table[i]) {
+				if (child->pipe_table[i]->is_pipe_read_end) {
+					// 파이프 읽기 FD를 자식의 FD 0에 할당
+					child->fd_table[0] = child->fd_table[i];
+					child->fd_table[i] = NULL; // 원래 위치는 회수
 				}
-				else{
+				else {
+					// 쓰기 FD는 자식에서 사용하지 않으므로 닫음
+					pipe_close(child->fd_table[i]);
 					child->fd_table[i] = NULL;
 				}
 			}
-			//2. if there is pipe, redirect
-			for (i = 0; i < FDCOUNT_LIMIT; i++) {
-				struct file *f = child->fd_table[i];
-				if (f && f->type == 1) {//type 1 : pipe
-					if (pipe_read_fd == -1)
-						// 첫 번째 PIPE FD를 읽기 FD로 가정
-						pipe_read_fd = i; 
-					else {
-						// 두 번째 PIPE FD를 쓰기 FD로 가정
-						pipe_write_fd = i; 
-						// 파이프 쌍 찾음
-						break; 
-					}
-				}
-			}
-
-			if (pipe_read_fd != -1 && pipe_write_fd != -1) {
-				// 자식의 STDIN(0)을 PIPE_R로 리디렉션
-				child->fd_table[0] = child->fd_table[pipe_read_fd];
-				child->fd_table[pipe_read_fd] = NULL;
-
-				// 쓰기 FD는 부모만 사용하므로 자식의 FD 테이블에서 제거
-				free(child->fd_table[pipe_write_fd]);
-				child->fd_table[pipe_write_fd] = NULL;
-			}
-		*/	
-			sema_down(&(child->load_lock));
+*/
 			return pid;
 		}
 	}
 	else{
-		sema_down(&(child->load_lock));
 		return -1;	
 	}
 	//lock_release(&filesys_lock);
@@ -143,18 +112,6 @@ bool remove(const char* file){
 	//lock_release(&filesys_lock);
 	return ret;	
 }
-
-int allocate_fd(){
-	int fd;
-	struct thread* cur = thread_current();
-	struct file** fdt = cur->fd_table;
-	for(fd = 3;fd<FDCOUNT_LIMIT;fd++){
-		if(fdt[fd]==NULL){
-			return fd;
-		}
-	}	
-	return -1;//full
-}
 int open(const char* file){
 	if(file==NULL){
 		exit(-1);
@@ -166,17 +123,22 @@ int open(const char* file){
 		return -1; // no file exist
 	}
 	//fd table
-	int fd = allocate_fd();
-	if(fd==-1) {
-		file_close(open_file);
-		lock_release(&filesys_lock);
-		return -1;
-	}
-	open_file->type= 0;//type 0 normal file
-	thread_current()->fd_table[fd] = open_file;
+	struct thread* cur = thread_current();
+	struct file** fdt = cur->fd_table;
+	int fd;
 	//lock_acquire(&filesys_lock);
+	for(fd=3;fd<FDCOUNT_LIMIT;fd++){
+		if(fdt[fd]==NULL){
+			//file_deny_write(open_file);
+			fdt[fd]=open_file;
+			lock_release(&filesys_lock);
+			return fd;
+		}
+	}
+	// fd full
+	file_close(open_file);
 	lock_release(&filesys_lock);
-	return fd;	
+	return -1;
 }
 
 int filesize(int fd){
@@ -186,44 +148,42 @@ int filesize(int fd){
 	struct file* open_file = cur->fd_table[fd];
 	return file_length(open_file);
 }
-int read_pipe(struct pipe *p, void *buffer, unsigned size) {
-	if (p->writer_count == 0 && p->size == 0)
-		return -1;
-
-	unsigned i;
-	for (i = 0; i < size; i++) {
-		if (p->size == 0)
-			break; // 버퍼가 비어 있으면 읽을 수 있는 만큼만 반환
-
-		sema_down(&p->full);
-		lock_acquire(&p->lock);
-
-		((char *)buffer)[i] = p->buffer[p->read_pos]; // 데이터 읽기
-		p->read_pos = (p->read_pos + 1) % PIPE_BUFFER_SIZE;
-		p->size--;
-
-		lock_release(&p->lock);
-		sema_up(&p->empty);
-	}
-
-	return i; // 읽은 데이터 크기 반환
-}
 int read(int fd, void* buffer, unsigned size){
 	struct thread* cur = thread_current();
 	check_address(buffer);
 	if(fd<0||fd==1||fd>=FDCOUNT_LIMIT)
 		exit(-1);
-	lock_acquire(&filesys_lock);
-	/*//1. pipe
-	if (fd == 0){
-		struct file *pipe_file = cur->fd_table[0];
-		if(pipe_file->type==1){
-		lock_release(&filesys_lock);
-		return read_pipe(pipe_file->pipe, buffer, size);
+	/*//1. check if pipe
+	struct pipe *p = cur->pipe_table[fd];
+	if (p) {
+		lock_acquire(&p->lock);
+
+		if (!p->read_open) { 
+			lock_release(&p->lock);
+			return -1;
 		}
+
+		unsigned bytes_read = 0;
+		while (bytes_read < size) {
+			while (p->head == p->tail) { // 버퍼가 비어 있음
+				if (!p->write_open) { 
+					lock_release(&p->lock);
+					return bytes_read;
+				}
+				cond_wait(&p->not_empty, &p->lock);
+			}
+			((char*)buffer)[bytes_read] = p->buffer[p->head];
+			p->head = (p->head + 1) % p->capacity;
+			bytes_read++;
+			cond_signal(&p->not_full);
+		}
+
+		lock_release(&p->lock);
+		return bytes_read;
 	}
 	*/
-
+	//2. do normal file
+	lock_acquire(&filesys_lock);
 	if(fd==0){ //stdio
 		unsigned i;
 		for(i=0;i<size;i++){
@@ -240,36 +200,12 @@ int read(int fd, void* buffer, unsigned size){
 			lock_release(&filesys_lock);
 			exit(-1);//nofile exist
 		}
-		//1. pipe
-		/*if (open_file->type == 1) {//그럴일은 없겠지만....
-			lock_release(&filesys_lock);
-			return read_pipe(open_file->pipe, buffer, size);
-		}*/
 		int read_size = file_read(open_file,buffer,size);
 		lock_release(&filesys_lock);
 		return read_size;
 	}
 	lock_release(&filesys_lock);
 	return -1;
-}
-int write_pipe(struct pipe *p, const void *buffer, unsigned size) {
-	if (p->reader_count == 0) // 읽기 엔드가 모두 닫혔다면 에러 반환
-		return -1;
-
-	unsigned i;
-	for (i = 0; i < size; i++) {
-		sema_down(&p->empty); // 버퍼가 가득 차 있으면 대기
-		lock_acquire(&p->lock);
-
-		p->buffer[p->write_pos] = ((char *)buffer)[i]; // 데이터 쓰기
-		p->write_pos = (p->write_pos + 1) % PIPE_BUFFER_SIZE;
-		p->size++;
-
-		lock_release(&p->lock);
-		sema_up(&p->full); // 데이터가 추가되었으므로 읽기 가능
-	}
-
-	return size;
 }
 
 int write(int fd,const void* buffer, unsigned size){
@@ -281,6 +217,36 @@ int write(int fd,const void* buffer, unsigned size){
 	if(fd<=0 || fd>=FDCOUNT_LIMIT){
 		exit(-1);
 	}
+	/*//1. check if it is pipe
+	struct pipe *p = cur->pipe_table[fd];
+	if (p) {
+		lock_acquire(&p->lock);
+
+		if (!p->read_open) { 
+			lock_release(&p->lock);
+			return -1;
+		}
+
+		unsigned bytes_read = 0;
+		while (bytes_read < size) {
+			while (p->head == p->tail) { // 버퍼가 비어 있음
+				if (!p->write_open) { 
+					lock_release(&p->lock);
+					return bytes_read;
+				}
+				cond_wait(&p->not_empty, &p->lock);
+			}
+			((char*)buffer)[bytes_read] = p->buffer[p->head];
+			p->head = (p->head + 1) % p->capacity;
+			bytes_read++;
+			cond_signal(&p->not_full);
+		}
+
+		lock_release(&p->lock);
+		return bytes_read;
+	}
+	*/	
+	//2. do normal file
 	lock_acquire(&filesys_lock);
 	if (fd == 1) { // 표준 출력 (콘솔)
 		putbuf(buffer, size);
@@ -292,11 +258,6 @@ int write(int fd,const void* buffer, unsigned size){
 			lock_release(&filesys_lock);
 			exit(-1);	
 		}
-		/*//1. pipe
-		if(open_file->type == 1){
-			lock_release(&filesys_lock);
-			return write_pipe(open_file->pipe,buffer,size);
-		}*/
 		if (open_file->deny_write) {
 			//file already read/ write by other thread
 			file_deny_write(open_file);
@@ -335,58 +296,37 @@ void close (int fd){
 	struct thread* cur = thread_current();
 	if(fd<0||fd>=FDCOUNT_LIMIT||cur->fd_table[fd]==NULL)
 		return -1;//there is no file to close
-	struct file* open_file = cur->fd_table[fd];
-	//1.pipe
-	if(open_file->type == 1){
-		free(open_file->pipe);
-	}		
+	/*//1. pipe
+	struct pipe *p = cur->pipe_table[fd];
+	if (p) { // 파이프 FD 처리
+		lock_acquire(&p->lock);
+
+		if (cur->pipe_table[fd] == p && p->read_open) p->read_open = false;
+		if (cur->pipe_table[fd] == p && p->write_open) p->write_open = false;
+
+		if (!p->read_open && !p->write_open) { // 양쪽이 다 닫혔으면 해제
+			free(p->buffer);
+			free(p);
+		}
+
+		lock_release(&p->lock);
+		cur->pipe_table[fd] = NULL;
+		return;
+	}
+	*/
 	//2. normal
+	struct file* open_file = cur->fd_table[fd];
 	file_close(open_file);
 	cur->fd_table[fd]=NULL;	
 	//lock_acquire(&filesys_lock);
 	//lock_release(&filesys_lock);
 }
 //proj2-2 : pipe
+int allocate_fd(){
+	int fd;	
+	return fd;
+}
 int pipe(int *fds) {
-	struct thread* cur = thread_current();
-	struct pipe *p = malloc(sizeof(struct pipe));
-
-	// init pipe
-	p->read_pos = 0;
-	p->write_pos = 0;
-	p->size = 0;
-	p->reader_count = 1;
-	p->writer_count = 1;
-	lock_init(&p->lock);
-	sema_init(&p->empty, PIPE_BUFFER_SIZE);
-	sema_init(&p->full, 0);
-
-	// alloc fd
-	int fd0 = allocate_fd();
-	int fd1 = allocate_fd();
-	if (fd0 == -1 || fd1 == -1) {
-		free(p);
-		return -1;
-	}	
-
-	//set file type to pipe
-	struct file *file_read = malloc(sizeof(struct file));
-	struct file *file_write = malloc(sizeof(struct file));
-	if (!file_read || !file_write) {
-		free(p);
-		return -1;
-	}
-	file_read->type = 1;//0 : normal file 1:pipe
-	file_read->pipe = p;
-
-	file_write->type = 1;//0 : normal file 1:pipe
-	file_write->pipe = p;
-
-	cur->fd_table[fd0] = file_read;
-	cur->fd_table[fd1] = file_write;
-
-	fds[0] = fd0; // 읽기 엔드
-	fds[1] = fd1; // 쓰기 엔드
 	return 0;
 }
 //BM : Signal function end
