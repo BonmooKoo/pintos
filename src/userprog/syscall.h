@@ -8,7 +8,6 @@ typedef int pid_t;
 struct lock filesys_lock;
 
 void syscall_init (void);
-void check_address(const uint64_t *addr);
 void halt(void);
 void exit(int status);
 pid_t exec(const char *cmd_line);
