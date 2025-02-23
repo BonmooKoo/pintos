@@ -15,12 +15,6 @@
 //pipe end///////////////////////////
 
 static void syscall_handler (struct intr_frame *);
-struct file
-{
-	struct inode *inode;        /* File's inode. */
-	off_t pos;                  /* Current position. */
-	bool deny_write;            /* Has file_deny_write() been called? */
-};
 	void
 syscall_init (void) 
 {
@@ -333,35 +327,6 @@ int allocate_fd(){
 	return fd;
 }
 int pipe(int *fds) {
-	struct pipe *p = malloc(sizeof(struct pipe));
-	if (!p) return -1;
-
-	p->buffer = malloc(PGSIZE);
-	if (!p->buffer) {
-		free(p);
-		return -1;
-	}
-	p->capacity = PGSIZE;
-	p->head = p->tail = 0;
-	lock_init(&p->lock);
-	cond_init(&p->not_empty);
-	cond_init(&p->not_full);
-	p->read_open = 1;
-	p->write_open = 1;
-
-	int read_fd = allocate_fd();
-	int write_fd = allocate_fd();
-	if (read_fd == -1 || write_fd == -1) {
-		free(p->buffer);
-		free(p);
-		return -1;
-	}
-
-	thread_current()->pipe_table[read_fd] = p;
-	thread_current()->pipe_table[write_fd] = p;
-
-	fds[0] = read_fd;
-	fds[1] = write_fd;
 	return 0;
 }
 //BM : Signal function end

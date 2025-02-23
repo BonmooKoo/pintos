@@ -91,6 +91,13 @@ void construct_esp(char *file_name, void **esp) {
   //printf("construct_esp() end: %x\n",*esp);
   free(argv);
 }
+//////////////////////////////////////////////////////
+//2. pipe
+
+
+
+//////////////////////////////////////////////////////
+
 //int palloc=0;
 //int pfree=0;
 tid_t
