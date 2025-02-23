@@ -63,12 +63,11 @@ pid_t exec(const char* cmd_line){
 	}
 	//2.
 	if(child!=NULL){
-		if(child->load_flag==false){
 			sema_down(&(child->load_lock));
+		if(child->load_flag==false){
 			return -1;
 		}
 		else{
-		/*	
 			//1. copy parent FDT
 			int i;
 			int pipe_read_fd = -1;
@@ -89,33 +88,25 @@ pid_t exec(const char* cmd_line){
 				struct file *f = child->fd_table[i];
 				if (f && f->type == 1) {//type 1 : pipe
 					if (pipe_read_fd == -1)
-						// 첫 번째 PIPE FD를 읽기 FD로 가정
 						pipe_read_fd = i; 
 					else {
-						// 두 번째 PIPE FD를 쓰기 FD로 가정
 						pipe_write_fd = i; 
-						// 파이프 쌍 찾음
 						break; 
 					}
 				}
 			}
 
 			if (pipe_read_fd != -1 && pipe_write_fd != -1) {
-				// 자식의 STDIN(0)을 PIPE_R로 리디렉션
 				child->fd_table[0] = child->fd_table[pipe_read_fd];
 				child->fd_table[pipe_read_fd] = NULL;
 
-				// 쓰기 FD는 부모만 사용하므로 자식의 FD 테이블에서 제거
 				free(child->fd_table[pipe_write_fd]);
 				child->fd_table[pipe_write_fd] = NULL;
 			}
-		*/	
-			sema_down(&(child->load_lock));
 			return pid;
 		}
 	}
 	else{
-		sema_down(&(child->load_lock));
 		return -1;	
 	}
 	//lock_release(&filesys_lock);
@@ -214,7 +205,7 @@ int read(int fd, void* buffer, unsigned size){
 	if(fd<0||fd==1||fd>=FDCOUNT_LIMIT)
 		exit(-1);
 	lock_acquire(&filesys_lock);
-	/*//1. pipe
+	//1. pipe
 	if (fd == 0){
 		struct file *pipe_file = cur->fd_table[0];
 		if(pipe_file->type==1){
@@ -222,7 +213,6 @@ int read(int fd, void* buffer, unsigned size){
 		return read_pipe(pipe_file->pipe, buffer, size);
 		}
 	}
-	*/
 
 	if(fd==0){ //stdio
 		unsigned i;
@@ -292,11 +282,11 @@ int write(int fd,const void* buffer, unsigned size){
 			lock_release(&filesys_lock);
 			exit(-1);	
 		}
-		/*//1. pipe
+		//1. pipe
 		if(open_file->type == 1){
 			lock_release(&filesys_lock);
 			return write_pipe(open_file->pipe,buffer,size);
-		}*/
+		}
 		if (open_file->deny_write) {
 			//file already read/ write by other thread
 			file_deny_write(open_file);
@@ -338,6 +328,7 @@ void close (int fd){
 	struct file* open_file = cur->fd_table[fd];
 	//1.pipe
 	if(open_file->type == 1){
+		printf("pipe close\n");
 		free(open_file->pipe);
 	}		
 	//2. normal

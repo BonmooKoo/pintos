@@ -171,7 +171,6 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
-  enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -183,11 +182,6 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
-  /* Prepare thread for first run by initializing its stack.
-     Do this atomically so intermediate values for the 'stack' 
-     member cannot be observed. */
-  old_level = intr_disable ();
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -203,8 +197,6 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
-  intr_set_level (old_level);
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -299,8 +291,8 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
-  sema_up(&thread_current()->child_lock);
-  sema_down(&thread_current()->mem_lock);
+  sema_up(&(thread_current()->child_lock));
+  sema_down(&(thread_current()->mem_lock));
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -461,6 +453,9 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
+  int i;
+  enum intr_level old_level;
+
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -471,48 +466,29 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-#ifdef USERPROG
-  /*
-	int exit_status;
-        struct file* fd_table[FDCOUNT_LIMIT];
-        struct thread* parent;
-        struct list child;
-        struct list_elem child_elem;
-        struct semaphore child_lock;
-        struct semaphore mem_lock;
-        struct semaphore load_lock;
-        bool waited;
-        int flag;
-   */
-//process
-  t->load_flag=true;
-  t->exit_flag=false; 
-  sema_init(&(t->child_lock), 0);        
-  sema_init(&(t->mem_lock), 0);
-  sema_init(&(t->load_lock), 0);
+  intr_set_level (old_level);
+  //
+  #ifdef USERPROG
+  /* 자식 리스트 초기화 */
   list_init(&(t->child));
-  list_push_back(&(running_thread()->child), &(t->child_elem));
-//file
-  int i;
-  for (i=3;i<FDCOUNT_LIMIT;i++){
-	t->fd_table[i]=NULL;
-  }
-  
-/* 자식 리스트 초기화 */
- /* list_init(&(t->child));
   // push to the child list of the running thread
   list_push_back(&(running_thread()->child), &(t->child_elem));
   // 부모 프로세스 저장
   t->parent=running_thread();
   sema_init(&(t->child_lock), 0);
   sema_init(&(t->load_lock), 0);
-  int i;
+  sema_init(&(t->mem_lock), 0);
   for(i=0;i<FDCOUNT_LIMIT;i++){
     t->fd_table[i]=NULL;
-  }*/
-#endif        
-
+  }
+  // 프로그램이 로드되지 않음
+  t->load_flag=true;
+  // 프로그램이 종료되지 않음
+  t->exit_flag=true;
+  #endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -584,6 +560,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
+      /* 이 부분을 주석처리해서 프로세스 디스크립터 삭제를 막는다. */
       palloc_free_page (prev);
     }
 }
@@ -628,3 +605,4 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+

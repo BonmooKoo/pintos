@@ -5,17 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "synch.h"
-struct pipe {
-    char *buffer;            // 링 버퍼 (예: 한 페이지)
-    size_t capacity;         // 버퍼 용량
-    size_t head;             // 읽기 위치
-    size_t tail;             // 쓰기 위치
-    struct lock lock;        // 동시 접근 보호
-    struct condition not_empty; // 버퍼에 데이터가 있음
-    struct condition not_full;  // 버퍼에 공간이 있음
-    bool read_open;          // 읽기 끝이 열려 있는지 여부
-    bool write_open;         // 쓰기 끝이 열려 있는지 여부
-};
+
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -109,7 +99,7 @@ struct thread
 #ifdef USERPROG
 	int exit_status;//exit 호출시 종료 상태
 	struct file* fd_table[FDCOUNT_LIMIT];
-	struct pipe* pipe_table[FDCOUNT_LIMIT];
+//	struct pipe* pipe_table[FDCOUNT_LIMIT];
  	struct thread* parent;
 	struct list child;
 	struct list_elem child_elem;
@@ -122,6 +112,9 @@ struct thread
 	struct file* exec_file;
 	/* Owned by userprog/process.c. */
 	uint32_t *pagedir;                  /* Page directory. */
+        
+        int next_fd;
+	
 #endif
 
 	/* Owned by thread.c. */
