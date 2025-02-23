@@ -96,7 +96,7 @@ void construct_esp(char *file_name, void **esp) {
 tid_t
 process_execute (const char *file_name) 
 {
-  init_count();
+ // init_count();
   char *fn_copy;
   char cmd_name[256];
   struct list_elem* elem;
@@ -124,6 +124,7 @@ process_execute (const char *file_name)
   
   if (tid == TID_ERROR){
     palloc_free_page (fn_copy); 
+    return -1;
     //pfree++;
   }
   for(elem=list_begin(&thread_current()->child);elem!=list_end(&thread_current()->child);elem=list_next(elem)){
@@ -165,6 +166,7 @@ start_process (void *file_name_)
   if (!success){
     	thread_current()->load_flag=false;
 	exit(-1);
+	//thread_exit(-1);
   }
   thread_current()->load_flag=true;
 //printf("start_process() end\n"); 
@@ -191,6 +193,9 @@ process_wait (tid_t child_tid)
 
   for (e = list_begin(&(thread_current()->child)); e != list_end(&(thread_current()->child)); e = list_next(e)) {
     t = list_entry(e, struct thread, child_elem);
+    if(t==NULL){
+    	return -1;
+    }
     if (child_tid == t->tid) {
       sema_down(&(t->child_lock));
       exit_status = t->exit_status;
@@ -446,6 +451,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if(!success){
      file_close (file);
   }
+  /*
+  if(t->pagedir!=NULL){
+     pagedir_destroy(t->pagedir);
+     t->pagedir = NULL;
+  }
+  */
   return success;
 }
 

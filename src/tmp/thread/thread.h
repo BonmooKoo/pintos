@@ -95,16 +95,18 @@ struct thread
 	struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
-	int exit_status;
+	int exit_status;//exit 호출시 종료 상태
 	struct file* fd_table[FDCOUNT_LIMIT];
 	struct thread* parent;
 	struct list child;
 	struct list_elem child_elem;
-	struct semaphore child_lock;
-	struct semaphore mem_lock;
-	struct semaphore load_lock;
+	struct semaphore child_lock;//자식 프로세스 종료 대기(exit_sema)
+	struct semaphore mem_lock;//삭제될때 부모의 자식리스트에서 삭제하기 위해 메모리에 남겨둠(remove_sema)
+	struct semaphore load_lock;//자식 프로세스 생성 대기(load_sema)
 	bool waited;
-	int flag;
+	bool load_flag;//프로세스 프로그램 메모리 적재 여부
+	bool exit_flag;//프로세스 종료 유무
+	struct file* exec_file;
 	/* Owned by userprog/process.c. */
 	uint32_t *pagedir;                  /* Page directory. */
 #endif

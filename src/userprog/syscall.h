@@ -4,7 +4,7 @@
 #include "devices/intq.h"
 
 typedef int pid_t;
-
+//struct pipe > thread/thread.h
 struct lock filesys_lock;
 
 void syscall_init (void);

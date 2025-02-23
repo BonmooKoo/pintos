@@ -24,6 +24,7 @@
    By default, half of system RAM is given to the kernel pool and
    half to the user pool.  That should be huge overkill for the
    kernel pool, but that's just fine for demonstration purposes. */
+/*
 int palloc_count;
 int pfree_count;
 void init_count(){
@@ -36,6 +37,7 @@ int get_palloc_count(){
 int get_pfree_count(){
 	return pfree_count;
 }
+*/
 /* A memory pool. */
 struct pool
   {
@@ -81,7 +83,7 @@ palloc_init (size_t user_page_limit)
 void *
 palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
 {
-palloc_count++;//count
+//palloc_count++;//count
   struct pool *pool = flags & PAL_USER ? &user_pool : &kernel_pool;
   void *pages;
   size_t page_idx;
@@ -129,7 +131,7 @@ palloc_get_page (enum palloc_flags flags)
 void
 palloc_free_multiple (void *pages, size_t page_cnt) 
 {
-pfree_count++;//count
+//pfree_count++;//count
   struct pool *pool;
   size_t page_idx;
 

@@ -299,6 +299,8 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
+  sema_up(&thread_current()->child_lock);
+  sema_down(&thread_current()->mem_lock);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -483,7 +485,9 @@ init_thread (struct thread *t, const char *name, int priority)
         bool waited;
         int flag;
    */
- //process
+//process
+  t->load_flag=true;
+  t->exit_flag=false; 
   sema_init(&(t->child_lock), 0);        
   sema_init(&(t->mem_lock), 0);
   sema_init(&(t->load_lock), 0);
@@ -491,10 +495,22 @@ init_thread (struct thread *t, const char *name, int priority)
   list_push_back(&(running_thread()->child), &(t->child_elem));
 //file
   int i;
-  for (i=0;i<FDCOUNT_LIMIT;i++){
+  for (i=3;i<FDCOUNT_LIMIT;i++){
 	t->fd_table[i]=NULL;
   }
   
+/* 자식 리스트 초기화 */
+ /* list_init(&(t->child));
+  // push to the child list of the running thread
+  list_push_back(&(running_thread()->child), &(t->child_elem));
+  // 부모 프로세스 저장
+  t->parent=running_thread();
+  sema_init(&(t->child_lock), 0);
+  sema_init(&(t->load_lock), 0);
+  int i;
+  for(i=0;i<FDCOUNT_LIMIT;i++){
+    t->fd_table[i]=NULL;
+  }*/
 #endif        
 
 }

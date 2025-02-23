@@ -5,6 +5,18 @@
 #include <list.h>
 #include <stdint.h>
 #include "synch.h"
+struct pipe {
+    char *buffer;            // 링 버퍼 (예: 한 페이지)
+    size_t capacity;         // 버퍼 용량
+    size_t head;             // 읽기 위치
+    size_t tail;             // 쓰기 위치
+    struct lock lock;        // 동시 접근 보호
+    struct condition not_empty; // 버퍼에 데이터가 있음
+    struct condition not_full;  // 버퍼에 공간이 있음
+    bool read_open;          // 읽기 끝이 열려 있는지 여부
+    bool write_open;         // 쓰기 끝이 열려 있는지 여부
+};
+
 /* States in a thread's life cycle. */
 enum thread_status
 {
@@ -80,7 +92,7 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
-#define FDCOUNT_LIMIT 128
+#define FDCOUNT_LIMIT 130
 struct thread
 {
 	/* Owned by thread.c. */
@@ -97,7 +109,8 @@ struct thread
 #ifdef USERPROG
 	int exit_status;//exit 호출시 종료 상태
 	struct file* fd_table[FDCOUNT_LIMIT];
-	struct thread* parent;
+	struct pipe* pipe_table[FDCOUNT_LIMIT];
+ 	struct thread* parent;
 	struct list child;
 	struct list_elem child_elem;
 	struct semaphore child_lock;//자식 프로세스 종료 대기(exit_sema)
