@@ -3,6 +3,17 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 
+/* An open file. */
+
+//typedef struct file
+//  {
+//    struct inode *inode;        /* File's inode. */
+//    off_t pos;                  /* Current position. */
+//    bool deny_write;            /* Has file_deny_write() been called? */
+ //   int type;                   /* 0:regular file / 1:pipe*/
+  //  struct pipe* pipe;           //save pipe
+ // };
+
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
    allocation fails or if INODE is null. */
@@ -15,15 +26,12 @@ file_open (struct inode *inode)
       file->inode = inode;
       file->pos = 0;
       file->deny_write = false;
-//  	printf("fileopen:file\n");
       return file;
     }
   else
     {
-      //printf("%d %d\n",(inode!=NULL),(file!=NULL));
       inode_close (inode);
       free (file);
-  //	printf("fileopen:fail\n");
       return NULL; 
     }
 }
@@ -107,6 +115,7 @@ file_write_at (struct file *file, const void *buffer, off_t size,
 {
   return inode_write_at (file->inode, buffer, size, file_ofs);
 }
+
 /* Prevents write operations on FILE's underlying inode
    until file_allow_write() is called or FILE is closed. */
 void
